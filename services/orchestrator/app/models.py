@@ -54,6 +54,44 @@ class NotebookEntry(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+
+
+class TinyImagenetCandidate(BaseModel):
+    noise_schedule: Literal["linear", "cosine", "sigmoid"]
+    prediction_target: Literal["epsilon", "v_prediction"]
+    learning_rate: float = Field(ge=1e-4, le=0.03)
+    hidden_size: int = Field(ge=4, le=64)
+    train_steps: int = Field(ge=10, le=160)
+
+
+class TinyImagenetPlanRequest(BaseModel):
+    objective: str = Field(min_length=10)
+    candidates: list[TinyImagenetCandidate] = Field(min_length=1)
+
+
+class TinyImagenetEvaluation(BaseModel):
+    rank: int
+    noise_schedule: str
+    prediction_target: str
+    learning_rate: float
+    hidden_size: int
+    train_steps: int
+    train_loss: float
+    val_loss: float
+    stability_score: float
+    throughput: float
+    score: float
+
+
+class TinyImagenetBatchReport(BaseModel):
+    run_id: UUID
+    objective: str
+    total_candidates: int
+    evaluated_candidates: int
+    rejected_candidates: int
+    best: TinyImagenetEvaluation
+    rankings: list[TinyImagenetEvaluation]
+    caveats: list[str]
 class MnistImageGenCandidate(BaseModel):
     noise_schedule: Literal["linear", "cosine", "sigmoid"]
     sampler: Literal["ddpm", "ddim", "heun"]

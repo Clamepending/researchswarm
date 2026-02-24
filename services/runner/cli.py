@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .runner import RunnerJob, run_job
 from .simulator import run_imagenet_long_horizon_campaign
+from .tiny_imagenet import TinyImagenetConfig, rank_tiny_imagenet_results, run_tiny_imagenet_training
 
 
 def _write_output(output_path: str | None, payload: dict) -> None:
@@ -25,6 +26,14 @@ def main() -> int:
     run_job_cmd.add_argument("--config-path", required=True)
     run_job_cmd.add_argument("--output", required=False)
 
+
+    tiny_cmd = subparsers.add_parser(
+        "tiny-imagenet-train", help="Run tiny synthetic ImageNet schedule/prediction sweep"
+    )
+    tiny_cmd.add_argument("--learning-rate", type=float, default=0.01)
+    tiny_cmd.add_argument("--hidden-size", type=int, default=8)
+    tiny_cmd.add_argument("--train-steps", type=int, default=50)
+    tiny_cmd.add_argument("--output", required=False)
     campaign_cmd = subparsers.add_parser(
         "imagenet-campaign", help="Run long-horizon ImageNet-subset research simulation"
     )
@@ -40,6 +49,23 @@ def main() -> int:
         _write_output(args.output, payload)
         return 0 if payload["status"] == "completed" else 2
 
+
+    if args.command == "tiny-imagenet-train":
+        candidates = [
+            TinyImagenetConfig("linear", "epsilon", args.learning_rate, args.hidden_size, args.train_steps),
+            TinyImagenetConfig("cosine", "epsilon", args.learning_rate, args.hidden_size, args.train_steps),
+            TinyImagenetConfig("cosine", "v_prediction", args.learning_rate, args.hidden_size, args.train_steps),
+            TinyImagenetConfig("sigmoid", "v_prediction", args.learning_rate, args.hidden_size, args.train_steps),
+        ]
+        ranked = rank_tiny_imagenet_results([run_tiny_imagenet_training(c) for c in candidates])
+        payload = {
+            "objective": "Tiny ImageNet schedule/target comparison",
+            "total_candidates": len(ranked),
+            "best_result": ranked[0].as_dict(),
+            "rankings": [r.as_dict() for r in ranked],
+        }
+        _write_output(args.output, payload)
+        return 0
     if args.command == "imagenet-campaign":
         report = run_imagenet_long_horizon_campaign(
             objective=args.objective,

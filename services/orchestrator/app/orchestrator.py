@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from services.runner.tiny_imagenet import TinyImagenetConfig, rank_tiny_imagenet_results, run_tiny_imagenet_training
+
 from uuid import UUID
 
 from .mnist_imagegen import MnistImageGenConfig, evaluate_config, rank_results
@@ -11,6 +13,9 @@ from .models import (
     MnistImageGenEvaluation,
     NotebookEntry,
     TimelineEvent,
+    TinyImagenetBatchReport,
+    TinyImagenetCandidate,
+    TinyImagenetEvaluation,
 )
 from .storage import add_experiment_run, add_notebook_entry, add_timeline_event, update_run_state
 
@@ -196,6 +201,138 @@ class OrchestratorStateMachine:
         )
 
         return MnistImageGenBatchReport(
+            run_id=run_id,
+            objective=objective,
+            total_candidates=len(candidates),
+            evaluated_candidates=len(unique_candidates),
+            rejected_candidates=rejected,
+            best=best,
+            rankings=evaluations,
+            caveats=caveats,
+        )
+
+    def run_tiny_imagenet_batch(
+        self,
+        run_id: UUID,
+        objective: str,
+        candidates: list[TinyImagenetCandidate],
+    ) -> TinyImagenetBatchReport:
+        if len(candidates) == 0:
+            raise ValueError("At least one candidate config is required")
+
+        update_run_state(run_id, status="running", stage="planning")
+        add_timeline_event(
+            TimelineEvent(
+                run_id=run_id,
+                event_type="stage_transition",
+                message="Planning tiny ImageNet schedule/prediction search",
+                confidence=0.93,
+            )
+        )
+
+        seen: set[tuple] = set()
+        unique_candidates: list[TinyImagenetCandidate] = []
+        for candidate in candidates:
+            key = (
+                candidate.noise_schedule,
+                candidate.prediction_target,
+                round(candidate.learning_rate, 8),
+                candidate.hidden_size,
+                candidate.train_steps,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_candidates.append(candidate)
+
+        rejected = len(candidates) - len(unique_candidates)
+
+        update_run_state(run_id, stage="execution")
+        add_timeline_event(
+            TimelineEvent(
+                run_id=run_id,
+                event_type="stage_transition",
+                message=f"Executing {len(unique_candidates)} tiny ImageNet candidates",
+                confidence=0.9,
+            )
+        )
+
+        results = []
+        for candidate in unique_candidates:
+            result = run_tiny_imagenet_training(TinyImagenetConfig(**candidate.model_dump()))
+            results.append(result)
+            add_experiment_run(
+                run_id=run_id,
+                experiment_family="imagenet_tiny_training",
+                config_json=candidate.model_dump_json(),
+                metrics_json=json.dumps(
+                    {
+                        "train_loss": result.train_loss,
+                        "val_loss": result.val_loss,
+                        "stability_score": result.stability_score,
+                        "throughput": result.throughput,
+                        "score": result.score,
+                    }
+                ),
+            )
+
+        if not results:
+            update_run_state(run_id, status="failed", stage="evaluation")
+            add_timeline_event(
+                TimelineEvent(run_id=run_id, event_type="failure", message="No valid tiny ImageNet candidates", confidence=1.0)
+            )
+            raise ValueError("No valid candidates to evaluate")
+
+        ranked = rank_tiny_imagenet_results(results)
+        evaluations: list[TinyImagenetEvaluation] = []
+        for idx, result in enumerate(ranked, start=1):
+            evaluations.append(
+                TinyImagenetEvaluation(
+                    rank=idx,
+                    noise_schedule=result.config.noise_schedule,
+                    prediction_target=result.config.prediction_target,
+                    learning_rate=result.config.learning_rate,
+                    hidden_size=result.config.hidden_size,
+                    train_steps=result.config.train_steps,
+                    train_loss=result.train_loss,
+                    val_loss=result.val_loss,
+                    stability_score=result.stability_score,
+                    throughput=result.throughput,
+                    score=result.score,
+                )
+            )
+
+        best = evaluations[0]
+        caveats = []
+        if rejected > 0:
+            caveats.append(f"{rejected} duplicate candidate(s) were skipped")
+        if best.stability_score < 0.65:
+            caveats.append("Best config has limited stability; rerun with more steps")
+
+        add_notebook_entry(
+            NotebookEntry(
+                run_id=run_id,
+                author_agent="evaluation",
+                summary=(
+                    f"Tiny ImageNet best: schedule={best.noise_schedule}, target={best.prediction_target}, "
+                    f"val_loss={best.val_loss}, stability={best.stability_score}."
+                ),
+                decision="Use this schedule/target as baseline for heavier training.",
+                citations=[],
+            )
+        )
+
+        update_run_state(run_id, status="completed", stage="reporting")
+        add_timeline_event(
+            TimelineEvent(
+                run_id=run_id,
+                event_type="agent_note",
+                message=f"Tiny ImageNet batch completed. Best score={best.score}.",
+                confidence=0.92,
+            )
+        )
+
+        return TinyImagenetBatchReport(
             run_id=run_id,
             objective=objective,
             total_candidates=len(candidates),

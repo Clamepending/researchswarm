@@ -35,3 +35,12 @@ python -m services.runner.cli imagenet-campaign --budget-hours 28 --max-runs 12
   "grad_clip": 1.0
 }
 ```
+
+
+### Tiny synthetic ImageNet training sweep
+
+Use this to compare diffusion-style noise schedules and prediction targets with a very small model:
+
+```bash
+python -m services.runner.cli tiny-imagenet-train --learning-rate 0.01 --hidden-size 8 --train-steps 50
+```

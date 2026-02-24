@@ -133,3 +133,65 @@ def test_invalid_candidate_boundaries_fail_validation() -> None:
         )
 
         assert response.status_code == 422
+
+
+def test_imagenet_tiny_end_to_end_selects_best_schedule_and_prediction() -> None:
+    with _client() as client:
+        project_response = client.post(
+            '/api/projects',
+            json={
+                'name': 'Tiny ImageNet schedule sweep',
+                'dataset_handle': 'imagenet://subset',
+                'seed_question': 'Which noise schedule and prediction target wins on tiny compute?',
+            },
+        )
+        assert project_response.status_code == 200
+        project_id = project_response.json()['project']['id']
+
+        run_response = client.post(f'/api/projects/{project_id}/runs')
+        assert run_response.status_code == 200
+        run_id = run_response.json()['run']['id']
+
+        execute_response = client.post(
+            f'/api/runs/{run_id}/imagenet-tiny/execute',
+            json={
+                'objective': 'Compare noise schedule and prediction target for tiny ImageNet training',
+                'candidates': [
+                    {
+                        'noise_schedule': 'linear',
+                        'prediction_target': 'epsilon',
+                        'learning_rate': 0.01,
+                        'hidden_size': 8,
+                        'train_steps': 50,
+                    },
+                    {
+                        'noise_schedule': 'cosine',
+                        'prediction_target': 'v_prediction',
+                        'learning_rate': 0.01,
+                        'hidden_size': 8,
+                        'train_steps': 50,
+                    },
+                    {
+                        'noise_schedule': 'sigmoid',
+                        'prediction_target': 'epsilon',
+                        'learning_rate': 0.008,
+                        'hidden_size': 10,
+                        'train_steps': 45,
+                    },
+                ],
+            },
+        )
+        assert execute_response.status_code == 200
+        report = execute_response.json()['report']
+
+        assert report['total_candidates'] == 3
+        assert report['evaluated_candidates'] == 3
+        assert report['best']['rank'] == 1
+        assert report['rankings'][0]['score'] >= report['rankings'][1]['score']
+        assert report['best']['noise_schedule'] in {'linear', 'cosine', 'sigmoid'}
+        assert report['best']['prediction_target'] in {'epsilon', 'v_prediction'}
+
+        timeline_response = client.get(f'/api/runs/{run_id}/timeline')
+        timeline_events = timeline_response.json()['events']
+        assert any('tiny ImageNet' in event['message'] for event in timeline_events)
+        assert any('completed' in event['message'] for event in timeline_events)
