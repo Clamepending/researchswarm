@@ -52,3 +52,43 @@ class NotebookEntry(BaseModel):
     decision: str
     citations: list[Citation] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MnistImageGenCandidate(BaseModel):
+    noise_schedule: Literal["linear", "cosine", "sigmoid"]
+    sampler: Literal["ddpm", "ddim", "heun"]
+    guidance_scale: float = Field(ge=0.1, le=12.0)
+    learning_rate: float = Field(ge=1e-5, le=5e-3)
+    ema_decay: float = Field(ge=0.9, le=0.9999)
+    grad_clip: float = Field(ge=0.1, le=5.0)
+
+
+class MnistImageGenPlanRequest(BaseModel):
+    objective: str = Field(min_length=10)
+    candidates: list[MnistImageGenCandidate] = Field(min_length=1)
+
+
+class MnistImageGenEvaluation(BaseModel):
+    rank: int
+    noise_schedule: str
+    sampler: str
+    guidance_scale: float
+    learning_rate: float
+    ema_decay: float
+    grad_clip: float
+    fid_proxy: float
+    stability_score: float
+    throughput: float
+    memory_gb: float
+    score: float
+
+
+class MnistImageGenBatchReport(BaseModel):
+    run_id: UUID
+    objective: str
+    total_candidates: int
+    evaluated_candidates: int
+    rejected_candidates: int
+    best: MnistImageGenEvaluation
+    rankings: list[MnistImageGenEvaluation]
+    caveats: list[str]

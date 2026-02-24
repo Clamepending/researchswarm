@@ -66,6 +66,19 @@ def init_db() -> None:
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS experiment_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id TEXT NOT NULL,
+          experiment_family TEXT NOT NULL,
+          config_json TEXT NOT NULL,
+          metrics_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -101,6 +114,21 @@ def create_run(project_id: UUID) -> ResearchRun:
     return run
 
 
+def update_run_state(run_id: UUID, *, status: str | None = None, stage: str | None = None) -> None:
+    if status is None and stage is None:
+        return
+
+    conn = _conn()
+    if status is not None and stage is not None:
+        conn.execute("UPDATE research_runs SET status = ?, stage = ? WHERE id = ?", (status, stage, str(run_id)))
+    elif status is not None:
+        conn.execute("UPDATE research_runs SET status = ? WHERE id = ?", (status, str(run_id)))
+    else:
+        conn.execute("UPDATE research_runs SET stage = ? WHERE id = ?", (stage, str(run_id)))
+    conn.commit()
+    conn.close()
+
+
 def add_timeline_event(event: TimelineEvent) -> None:
     conn = _conn()
     conn.execute(
@@ -133,6 +161,16 @@ def add_notebook_entry(entry: NotebookEntry) -> None:
             entry.model_dump_json(include={"citations"}),
             entry.created_at.isoformat(),
         ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_experiment_run(run_id: UUID, experiment_family: str, config_json: str, metrics_json: str, status: str = "completed") -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO experiment_runs (run_id, experiment_family, config_json, metrics_json, status, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
+        (str(run_id), experiment_family, config_json, metrics_json, status),
     )
     conn.commit()
     conn.close()
