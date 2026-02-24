@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://researchswarm.dev/schemas/agent-payload.json",
+  "title": "AgentTaskPayload",
+  "type": "object",
+  "required": [
+    "task_id",
+    "objective",
+    "inputs",
+    "constraints",
+    "acceptance_criteria"
+  ],
+  "properties": {
+    "task_id": { "type": "string", "format": "uuid" },
+    "parent_task_id": { "type": ["string", "null"], "format": "uuid" },
+    "objective": { "type": "string", "minLength": 1 },
+    "inputs": { "type": "object", "additionalProperties": true },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "artifacts": { "type": "array", "items": { "type": "string" } },
+    "result_summary": { "type": ["string", "null"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "risks": { "type": "array", "items": { "type": "string" } },
+    "next_actions": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

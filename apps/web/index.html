@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResearchSwarm Intake</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>ResearchSwarm</h1>
+      <p>Create a project intake and inspect a run timeline.</p>
+
+      <form id="intake-form">
+        <label>
+          Project name
+          <input required name="name" />
+        </label>
+        <label>
+          Dataset handle
+          <input required name="dataset_handle" placeholder="s3://bucket/dataset" />
+        </label>
+        <label>
+          GitHub repo URL (optional)
+          <input name="github_repo_url" placeholder="https://github.com/org/repo" />
+        </label>
+        <label>
+          Seed question (optional)
+          <textarea name="seed_question" rows="3"></textarea>
+        </label>
+        <button type="submit">Start run</button>
+      </form>
+
+      <section>
+        <h2>Run timeline</h2>
+        <ul id="timeline"></ul>
+      </section>
+    </main>
+    <script src="main.js"></script>
+  </body>
+</html>
