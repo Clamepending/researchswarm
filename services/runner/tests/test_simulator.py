@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
 
 from services.runner.runner import RunnerJob, run_job
 from services.runner.simulator import ImageGenConfig, evaluate_imagegen_config, run_imagenet_long_horizon_campaign
+from services.runner.tiny_imagenet import TinyImagenetConfig, rank_tiny_imagenet_results, run_tiny_imagenet_training
 
 
 def test_evaluate_imagegen_config_mnist_smoke() -> None:
@@ -63,3 +64,49 @@ def test_cli_imagenet_campaign_writes_output(tmp_path: Path) -> None:
     payload = json.loads(output_path.read_text())
     assert payload["dataset"] == "imagenet_subset"
     assert payload["completed_runs"] > 0
+
+
+def test_tiny_imagenet_training_prefers_better_schedule_target_combo() -> None:
+    baseline = run_tiny_imagenet_training(
+        TinyImagenetConfig(
+            noise_schedule="linear",
+            prediction_target="epsilon",
+            learning_rate=0.01,
+            hidden_size=8,
+            train_steps=50,
+        )
+    )
+    candidate = run_tiny_imagenet_training(
+        TinyImagenetConfig(
+            noise_schedule="cosine",
+            prediction_target="v_prediction",
+            learning_rate=0.01,
+            hidden_size=8,
+            train_steps=50,
+        )
+    )
+    ranked = rank_tiny_imagenet_results([baseline, candidate])
+    assert ranked[0].score >= ranked[1].score
+    assert ranked[0].val_loss <= ranked[1].val_loss
+
+
+def test_cli_tiny_imagenet_train_writes_output(tmp_path: Path) -> None:
+    output_path = tmp_path / "tiny.json"
+    cmd = [
+        "python",
+        "-m",
+        "services.runner.cli",
+        "tiny-imagenet-train",
+        "--learning-rate",
+        "0.01",
+        "--hidden-size",
+        "8",
+        "--train-steps",
+        "40",
+        "--output",
+        str(output_path),
+    ]
+    subprocess.run(cmd, check=True, cwd=str(ROOT))
+    payload = json.loads(output_path.read_text())
+    assert payload["total_candidates"] == 4
+    assert payload["best_result"]["score"] >= payload["rankings"][1]["score"]

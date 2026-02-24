@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
 
-from .models import MnistImageGenPlanRequest, ProjectCreate
+from .models import MnistImageGenPlanRequest, ProjectCreate, TinyImagenetPlanRequest
 from .orchestrator import OrchestratorStateMachine
 from .storage import create_project, create_run, init_db, list_timeline
 
@@ -40,6 +40,20 @@ def create_run_endpoint(project_id: UUID) -> dict:
 def execute_mnist_imagegen(run_id: UUID, payload: MnistImageGenPlanRequest) -> dict:
     try:
         report = state_machine.run_mnist_imagegen_batch(
+            run_id=run_id,
+            objective=payload.objective,
+            candidates=payload.candidates,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"report": report.model_dump(mode="json")}
+
+
+@app.post("/api/runs/{run_id}/imagenet-tiny/execute")
+def execute_tiny_imagenet(run_id: UUID, payload: TinyImagenetPlanRequest) -> dict:
+    try:
+        report = state_machine.run_tiny_imagenet_batch(
             run_id=run_id,
             objective=payload.objective,
             candidates=payload.candidates,
